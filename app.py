@@ -1,5 +1,4 @@
 import threading
-import time
 import logging
 import os
 from functools import wraps
@@ -16,8 +15,6 @@ from db import (
     verify_magic_token, get_users_with_alerts, get_digest_results_for_user,
     update_user_digest_sent,
 )
-from scraper import polite_delay
-from scanner_core import check_single_alert
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,10 +33,6 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 log.info("Initializing database at %s", os.getenv("DATABASE_PATH", "(default ./scraper.db)"))
 init_db()
 log.info("Database ready. App module loaded.")
-
-scanner_thread = None
-scanner_running = False
-scanner_status = {"state": "stopped", "last_run": None, "current_alert": None}
 
 
 # --------------- Auth helpers ---------------
@@ -123,51 +116,6 @@ def auth_logout():
     return redirect(url_for("landing"))
 
 
-# --------------- Background Scanner ---------------
-
-def run_scanner():
-    global scanner_running, scanner_status
-    scanner_status["state"] = "running"
-    log.info("Scanner thread started")
-
-    while scanner_running:
-        alerts = get_all_active_alerts()
-        for alert in alerts:
-            if not scanner_running:
-                break
-            scanner_status["current_alert"] = alert["name"]
-            check_single_alert(alert)
-            polite_delay()
-
-        scanner_status["current_alert"] = None
-        scanner_status["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        interval = int(get_setting("poll_interval_minutes", "10"))
-        log.info("Scan complete. Sleeping %d minutes...", interval)
-
-        for _ in range(interval * 60):
-            if not scanner_running:
-                break
-            time.sleep(1)
-
-    scanner_status["state"] = "stopped"
-    log.info("Scanner thread stopped")
-
-
-def start_scanner():
-    global scanner_thread, scanner_running
-    if scanner_running:
-        return
-    scanner_running = True
-    scanner_thread = threading.Thread(target=run_scanner, daemon=True)
-    scanner_thread.start()
-
-
-def stop_scanner():
-    global scanner_running
-    scanner_running = False
-
-
 # --------------- Dashboard ---------------
 
 @app.route("/dashboard")
@@ -182,14 +130,10 @@ def dashboard():
         a["recent_posts"] = get_posts_for_alert(a["id"], limit=5)
 
     notifications = get_notifications_for_user(uid, limit=10)
-    interval = get_setting("poll_interval_minutes", "10")
 
     return render_template("dashboard.html",
                            alerts=alerts,
-                           notifications=notifications,
-                           scanner=scanner_status,
-                           scanner_running=scanner_running,
-                           poll_interval=interval)
+                           notifications=notifications)
 
 
 # --------------- Alert CRUD ---------------
@@ -260,55 +204,6 @@ def toggle_alert_route(alert_id):
     return redirect(url_for("dashboard"))
 
 
-# --------------- Scanner controls ---------------
-
-@app.route("/scan", methods=["POST"])
-@login_required
-def trigger_scan():
-    uid = session["user_id"]
-    if not scanner_running:
-        flash("Start the scanner first.", "error")
-        return redirect(url_for("dashboard"))
-
-    def one_off():
-        for alert in get_alerts_for_user(uid, active_only=True):
-            check_single_alert(alert)
-            polite_delay()
-
-    threading.Thread(target=one_off, daemon=True).start()
-    flash("Manual scan triggered for your alerts.", "success")
-    return redirect(url_for("dashboard"))
-
-
-@app.route("/scanner/start", methods=["POST"])
-@login_required
-def start_scanner_route():
-    start_scanner()
-    flash("Scanner started.", "success")
-    return redirect(url_for("dashboard"))
-
-
-@app.route("/scanner/stop", methods=["POST"])
-@login_required
-def stop_scanner_route():
-    stop_scanner()
-    flash("Scanner stopping...", "success")
-    return redirect(url_for("dashboard"))
-
-
-@app.route("/settings", methods=["POST"])
-@login_required
-def update_settings():
-    interval = request.form.get("poll_interval", "10").strip()
-    try:
-        val = max(1, int(interval))
-        set_setting("poll_interval_minutes", str(val))
-        flash(f"Poll interval set to {val} minutes.", "success")
-    except ValueError:
-        flash("Invalid interval value.", "error")
-    return redirect(url_for("dashboard"))
-
-
 # --------------- Digest endpoint (cron trigger) ---------------
 
 def _run_digest_job():
@@ -357,10 +252,7 @@ def digest_run():
 
 @app.route("/api/status")
 def api_status():
-    return jsonify({
-        "scanner_running": scanner_running,
-        "status": scanner_status,
-    })
+    return jsonify({"status": "ok"})
 
 
 # --------------- Startup ---------------
