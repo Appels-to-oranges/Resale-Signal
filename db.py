@@ -25,7 +25,7 @@ def init_db():
             email           TEXT NOT NULL UNIQUE,
             token           TEXT,
             token_expires   TIMESTAMP,
-            last_digest_sent TIMESTAMP DEFAULT '2000-01-01 00:00:00',
+            last_digest_sent TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
