@@ -25,6 +25,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger(__name__)
+log.info("Starting Resale Signal app module...")
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "resale-signal-secret-key-change-me")
@@ -32,7 +33,9 @@ app.secret_key = os.getenv("SECRET_KEY", "resale-signal-secret-key-change-me")
 # Trust Railway/Render/etc reverse proxy headers so request.url_root uses https
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+log.info("Initializing database at %s", os.getenv("DATABASE_PATH", "(default ./scraper.db)"))
 init_db()
+log.info("Database ready. App module loaded.")
 
 scanner_thread = None
 scanner_running = False
