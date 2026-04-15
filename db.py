@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 DB_PATH = os.getenv("DATABASE_PATH",
                      os.path.join(os.path.dirname(os.path.abspath(__file__)), "scraper.db"))
 
+os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
+
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
