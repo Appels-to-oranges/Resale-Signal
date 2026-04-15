@@ -13,7 +13,8 @@ from db import (
     update_alert, delete_alert, toggle_alert, get_posts_for_alert, get_post_count,
     add_notification, get_notifications_for_user, get_setting, set_setting,
     create_user, get_user_by_email, get_user_by_id, generate_magic_token,
-    verify_magic_token,
+    verify_magic_token, get_users_with_alerts, get_digest_results_for_user,
+    update_user_digest_sent,
 )
 from scraper import polite_delay
 from scanner_core import check_single_alert
@@ -303,6 +304,52 @@ def update_settings():
     except ValueError:
         flash("Invalid interval value.", "error")
     return redirect(url_for("dashboard"))
+
+
+# --------------- Digest endpoint (cron trigger) ---------------
+
+def _run_digest_job():
+    """Run the full digest pipeline in-process."""
+    from scanner_core import scan_all_alerts
+    from emailer import send_digest
+
+    log.info("Digest job: scanning all active alerts...")
+    scan_all_alerts()
+
+    users = get_users_with_alerts()
+    log.info("Digest job: building digests for %d user(s)...", len(users))
+
+    for user in users:
+        since = user.get("last_digest_sent") or "2000-01-01 00:00:00"
+        results = get_digest_results_for_user(user["id"], since)
+        total = sum(len(posts) for posts in results.values())
+
+        if total == 0:
+            log.info("  [%s] No new posts. Skipping.", user["email"])
+            update_user_digest_sent(user["id"])
+            continue
+
+        log.info("  [%s] %d new post(s) across %d alert(s)", user["email"], total, len(results))
+        try:
+            send_digest(user["email"], results)
+            update_user_digest_sent(user["id"])
+            log.info("  [%s] Digest sent.", user["email"])
+        except Exception as e:
+            log.error("  [%s] Failed to send digest: %s", user["email"], e)
+
+    log.info("Digest job: done.")
+
+
+@app.route("/digest/run", methods=["POST"])
+def digest_run():
+    secret = os.getenv("DIGEST_SECRET", "")
+    provided = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+
+    if not secret or provided != secret:
+        return jsonify({"error": "unauthorized"}), 401
+
+    threading.Thread(target=_run_digest_job, daemon=True).start()
+    return jsonify({"status": "digest started"}), 202
 
 
 @app.route("/api/status")
