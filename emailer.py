@@ -13,31 +13,25 @@ log = logging.getLogger(__name__)
 
 
 def get_smtp_config() -> dict:
-    """Load SMTP settings from environment, falling back to DB settings."""
-    from db import get_setting
-
     return {
-        "host": os.getenv("SMTP_HOST") or get_setting("smtp_host", ""),
-        "port": int(os.getenv("SMTP_PORT") or get_setting("smtp_port", "587")),
-        "user": os.getenv("SMTP_USER") or get_setting("smtp_user", ""),
-        "password": os.getenv("SMTP_PASSWORD") or get_setting("smtp_password", ""),
-        "recipient": os.getenv("SMTP_TO") or get_setting("smtp_to", ""),
-        "use_tls": (os.getenv("SMTP_USE_TLS", "") or get_setting("smtp_use_tls", "true")).lower() == "true",
+        "host": os.getenv("SMTP_HOST", ""),
+        "port": int(os.getenv("SMTP_PORT", "587")),
+        "user": os.getenv("SMTP_USER", ""),
+        "password": os.getenv("SMTP_PASSWORD", ""),
+        "use_tls": os.getenv("SMTP_USE_TLS", "true").lower() == "true",
     }
 
 
 def send_email(recipient: str, subject: str, html_body: str):
-    """Send an HTML email via SMTP."""
     cfg = get_smtp_config()
     host = cfg["host"]
     port = cfg["port"]
     user = cfg["user"]
     password = cfg["password"]
-    recipient = recipient or cfg["recipient"]
 
     if not all([host, user, password, recipient]):
-        log.error("SMTP not configured. Set values in .env or the web UI settings.")
-        raise ValueError("SMTP not configured — fill in .env or the Email Settings on the dashboard.")
+        log.error("SMTP not configured. Set values in .env.")
+        raise ValueError("SMTP not configured — fill in .env settings.")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -63,11 +57,57 @@ def send_email(recipient: str, subject: str, html_body: str):
     log.info("Email sent successfully")
 
 
+# --------------- Magic Link Email ---------------
+
+def send_magic_link_email(to_email: str, magic_url: str):
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 0;">
+<tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+    <tr>
+        <td style="background:linear-gradient(135deg,#3366ff,#1a4fdd);padding:28px 24px;text-align:center;">
+            <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">Resale Signal</h1>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding:32px 28px;">
+            <p style="margin:0 0 16px;font-size:16px;color:#333;line-height:1.5;">
+                Click the button below to sign in to your Resale Signal account.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td align="center" style="padding:16px 0;">
+                        <a href="{magic_url}"
+                           style="display:inline-block;background:#3366ff;color:#fff;font-size:16px;font-weight:600;padding:14px 36px;border-radius:8px;text-decoration:none;">
+                            Sign In
+                        </a>
+                    </td>
+                </tr>
+            </table>
+            <p style="margin:16px 0 0;font-size:13px;color:#999;line-height:1.5;">
+                This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
+            </p>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding:16px 28px;text-align:center;font-size:12px;color:#aaa;border-top:1px solid #eee;">
+            Sent by Resale Signal
+        </td>
+    </tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+    send_email(to_email, "Sign in to Resale Signal", html)
+
+
+# --------------- Digest Email ---------------
+
 def build_digest_html(results: dict[str, list[dict]]) -> str:
-    """
-    Build an HTML email body from scan results.
-    results: { "Alert Name": [ {title, price, url, neighborhood}, ... ], ... }
-    """
     total = sum(len(posts) for posts in results.values())
     date_str = datetime.now().strftime("%B %d, %Y")
 
@@ -113,16 +153,13 @@ def build_digest_html(results: dict[str, list[dict]]) -> str:
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:20px 0;">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-    <!-- Header -->
     <tr>
         <td colspan="3" style="background:linear-gradient(135deg,#3366ff,#1a4fdd);padding:24px 20px;text-align:center;">
             <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">Resale Signal</h1>
             <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">{date_str} &middot; {total} new listing{'s' if total != 1 else ''}</p>
         </td>
     </tr>
-    <!-- Listings -->
     {rows_html}
-    <!-- Footer -->
     <tr>
         <td colspan="3" style="padding:16px 12px;text-align:center;font-size:12px;color:#aaa;border-top:1px solid #eee;">
             Sent by Resale Signal &middot; Manage alerts in your dashboard
@@ -135,19 +172,17 @@ def build_digest_html(results: dict[str, list[dict]]) -> str:
 </html>"""
 
 
-def send_digest(results: dict[str, list[dict]]):
-    """Build and send a digest email with scan results."""
-    cfg = get_smtp_config()
+def send_digest(recipient: str, results: dict[str, list[dict]]):
+    """Build and send a digest email to a specific user."""
     total = sum(len(posts) for posts in results.values())
     subject = f"Resale Signal: {total} new listing{'s' if total != 1 else ''} — {datetime.now().strftime('%b %d')}"
     html = build_digest_html(results)
-    send_email(cfg["recipient"], subject, html)
+    send_email(recipient, subject, html)
 
 
-def send_test_email():
+def send_test_email(recipient: str):
     """Send a test email to verify SMTP config is working."""
-    cfg = get_smtp_config()
     html = build_digest_html({"Test Alert": [
         {"title": "This is a test listing", "price": "$100", "url": "#", "neighborhood": "Downtown"},
     ]})
-    send_email(cfg["recipient"], "Resale Signal — Test Email", html)
+    send_email(recipient, "Resale Signal — Test Email", html)

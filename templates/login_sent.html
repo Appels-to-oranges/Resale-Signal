@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Your Email — Resale Signal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50:'#f0f5ff', 100:'#e0eaff', 200:'#c2d5ff', 400:'#6b9aff', 500:'#4a7dff', 600:'#3366ff', 700:'#1a4fdd', 900:'#0a2a7a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .fade-in { animation: fadeIn .4s ease-out; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    </style>
+</head>
+<body class="h-full bg-gray-50 text-gray-800 flex flex-col">
+
+    <div class="flex-1 flex items-center justify-center px-4">
+        <div class="fade-in text-center max-w-md w-full">
+            <!-- Email icon -->
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-100 mb-6">
+                <svg class="w-8 h-8 text-brand-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/>
+                </svg>
+            </div>
+
+            <h1 class="text-2xl font-bold text-gray-900 mb-3">Check your email</h1>
+            <p class="text-gray-500 mb-2 text-lg">
+                We sent a sign-in link to
+            </p>
+            <p class="text-brand-700 font-semibold text-lg mb-6">{{ email }}</p>
+
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 text-left space-y-3">
+                <div class="flex items-start gap-3">
+                    <span class="text-brand-600 mt-0.5">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                    </span>
+                    <p class="text-sm text-gray-600">Click the link in the email to sign in instantly.</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <span class="text-brand-600 mt-0.5">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </span>
+                    <p class="text-sm text-gray-600">The link expires in 1 hour.</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <span class="text-gray-400 mt-0.5">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg>
+                    </span>
+                    <p class="text-sm text-gray-500">Don't see it? Check your spam folder.</p>
+                </div>
+            </div>
+
+            <a href="{{ url_for('landing') }}" class="inline-block mt-6 text-sm text-brand-600 hover:text-brand-700 font-medium">
+                ← Back to home
+            </a>
+        </div>
+    </div>
+
+    <footer class="text-center text-xs text-gray-400 py-6">
+        Resale Signal
+    </footer>
+
+</body>
+</html>

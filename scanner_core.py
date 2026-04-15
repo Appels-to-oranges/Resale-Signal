@@ -3,7 +3,7 @@ from datetime import datetime
 
 from scraper import build_search_url, scrape_listings, polite_delay
 from db import (
-    get_alerts, is_new_post, save_post, update_alert, add_notification,
+    get_all_active_alerts, is_new_post, save_post, update_alert, add_notification,
 )
 from notifier import notify_new_posts
 
@@ -52,7 +52,7 @@ def check_single_alert(alert: dict) -> list[dict]:
 
 def scan_all_alerts() -> dict[str, list[dict]]:
     """Scan every active alert. Returns {alert_name: [new_posts]}."""
-    alerts = get_alerts(active_only=True)
+    alerts = get_all_active_alerts()
     results: dict[str, list[dict]] = {}
     for alert in alerts:
         new_posts = check_single_alert(alert)

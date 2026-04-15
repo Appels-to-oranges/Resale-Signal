@@ -11,44 +11,52 @@ log = logging.getLogger(__name__)
 
 
 def run_digest():
-    """Scan all active alerts, then email a digest of new finds and exit."""
-    from db import init_db, get_setting, set_setting, get_digest_results_since
+    """Scan all active alerts, then email a per-user digest of new finds and exit."""
+    from db import (
+        init_db, get_users_with_alerts, get_alerts_for_user,
+        get_digest_results_for_user, update_user_digest_sent,
+    )
     from scanner_core import scan_all_alerts
-    from emailer import send_digest, build_digest_html, get_smtp_config
+    from emailer import send_digest
 
     init_db()
 
-    last_sent = get_setting("last_digest_sent", "2000-01-01 00:00:00")
-    log.info("Running digest (posts since %s)", last_sent)
+    log.info("Scanning all active alerts...")
+    scan_all_alerts()
 
-    scan_results = scan_all_alerts()
+    users = get_users_with_alerts()
+    log.info("Building digests for %d user(s)...", len(users))
 
-    all_results = get_digest_results_since(last_sent)
+    for user in users:
+        since = user.get("last_digest_sent") or "2000-01-01 00:00:00"
+        results = get_digest_results_for_user(user["id"], since)
 
-    total = sum(len(posts) for posts in all_results.values())
-    if total == 0:
-        log.info("No new posts to report. Skipping email.")
-    else:
-        log.info("Digest: %d new post(s) across %d alert(s)", total, len(all_results))
+        total = sum(len(posts) for posts in results.values())
+        if total == 0:
+            log.info("  [%s] No new posts. Skipping.", user["email"])
+            update_user_digest_sent(user["id"])
+            continue
+
+        log.info("  [%s] %d new post(s) across %d alert(s)", user["email"], total, len(results))
         try:
-            send_digest(all_results)
-            log.info("Digest email sent successfully.")
+            send_digest(user["email"], results)
+            update_user_digest_sent(user["id"])
+            log.info("  [%s] Digest sent.", user["email"])
         except Exception as e:
-            log.error("Failed to send digest email: %s", e)
-            sys.exit(1)
+            log.error("  [%s] Failed to send digest: %s", user["email"], e)
 
-    set_setting("last_digest_sent", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     log.info("Done.")
 
 
 def run_web():
-    """Start the Flask web app."""
-    from db import init_db
+    """Start the Flask dev server (use gunicorn in production)."""
+    import os
     from app import app
 
-    init_db()
-    print("\n  Resale Signal running at http://127.0.0.1:5000\n")
-    app.run(debug=True, host="127.0.0.1", port=5000, use_reloader=False)
+    port = int(os.getenv("PORT", "5000"))
+    host = os.getenv("HOST", "127.0.0.1")
+    print(f"\n  Resale Signal running at http://{host}:{port}\n")
+    app.run(debug=True, host=host, port=port, use_reloader=False)
 
 
 if __name__ == "__main__":
