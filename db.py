@@ -25,6 +25,7 @@ def init_db():
             email           TEXT NOT NULL UNIQUE,
             token           TEXT,
             token_expires   TIMESTAMP,
+            unsubscribe_token TEXT,
             last_digest_sent TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -72,6 +73,21 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value) VALUES ('poll_interval_minutes', '10');
     """)
     conn.commit()
+
+    # Migration: add unsubscribe_token column if missing (for existing DBs)
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "unsubscribe_token" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN unsubscribe_token TEXT")
+        conn.commit()
+
+    # Backfill unsubscribe tokens for any users that don't have one
+    rows = conn.execute("SELECT id FROM users WHERE unsubscribe_token IS NULL").fetchall()
+    for row in rows:
+        conn.execute("UPDATE users SET unsubscribe_token = ? WHERE id = ?",
+                     (uuid.uuid4().hex, row["id"]))
+    if rows:
+        conn.commit()
+
     conn.close()
 
 
@@ -79,7 +95,11 @@ def init_db():
 
 def create_user(email: str) -> int:
     conn = get_connection()
-    cur = conn.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email.lower().strip(),))
+    unsub_token = uuid.uuid4().hex
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO users (email, unsubscribe_token) VALUES (?, ?)",
+        (email.lower().strip(), unsub_token),
+    )
     conn.commit()
     if cur.lastrowid:
         uid = cur.lastrowid
@@ -152,6 +172,20 @@ def update_user_digest_sent(user_id: int):
         "UPDATE users SET last_digest_sent = ? WHERE id = ?",
         (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id),
     )
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_unsubscribe_token(token: str):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM users WHERE unsubscribe_token = ?", (token,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def deactivate_user_alerts(user_id: int):
+    conn = get_connection()
+    conn.execute("UPDATE alerts SET active = 0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 

@@ -12,6 +12,10 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 log = logging.getLogger(__name__)
 
 
+def _site_url() -> str:
+    return os.getenv("SITE_URL", "").rstrip("/") or "http://localhost:5000"
+
+
 def get_smtp_config() -> dict:
     return {
         "host": os.getenv("SMTP_HOST", ""),
@@ -22,7 +26,8 @@ def get_smtp_config() -> dict:
     }
 
 
-def send_email(recipient: str, subject: str, html_body: str):
+def send_email(recipient: str, subject: str, html_body: str,
+               unsubscribe_url: str | None = None):
     cfg = get_smtp_config()
     host = cfg["host"]
     port = cfg["port"]
@@ -37,6 +42,11 @@ def send_email(recipient: str, subject: str, html_body: str):
     msg["Subject"] = subject
     msg["From"] = user
     msg["To"] = recipient
+
+    if unsubscribe_url:
+        msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+        msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
     msg.attach(MIMEText(html_body, "html"))
 
     log.info("Sending email to %s via %s:%d", recipient, host, port)
@@ -94,7 +104,7 @@ def send_magic_link_email(to_email: str, magic_url: str):
     </tr>
     <tr>
         <td style="padding:16px 28px;text-align:center;font-size:12px;color:#aaa;border-top:1px solid #eee;">
-            Sent by Resale Signal
+            Sent by <a href="{_site_url()}/dashboard" style="color:#4a7dff;text-decoration:none;">Resale Signal</a>
         </td>
     </tr>
 </table>
@@ -107,7 +117,9 @@ def send_magic_link_email(to_email: str, magic_url: str):
 
 # --------------- Digest Email ---------------
 
-def build_digest_html(results: dict[str, list[dict]]) -> str:
+def build_digest_html(results: dict[str, list[dict]],
+                      dashboard_url: str | None = None,
+                      unsubscribe_url: str | None = None) -> str:
     total = sum(len(posts) for posts in results.values())
     date_str = datetime.now().strftime("%B %d, %Y")
 
@@ -162,7 +174,7 @@ def build_digest_html(results: dict[str, list[dict]]) -> str:
     {rows_html}
     <tr>
         <td colspan="3" style="padding:16px 12px;text-align:center;font-size:12px;color:#aaa;border-top:1px solid #eee;">
-            Sent by Resale Signal &middot; Manage alerts in your dashboard
+            Sent by Resale Signal{f' &middot; <a href="{dashboard_url}" style="color:#4a7dff;text-decoration:none;">Manage alerts</a>' if dashboard_url else ''}{f' &middot; <a href="{unsubscribe_url}" style="color:#aaa;text-decoration:underline;">Unsubscribe</a>' if unsubscribe_url else ''}
         </td>
     </tr>
 </table>
@@ -172,17 +184,27 @@ def build_digest_html(results: dict[str, list[dict]]) -> str:
 </html>"""
 
 
-def send_digest(recipient: str, results: dict[str, list[dict]]):
+def send_digest(recipient: str, results: dict[str, list[dict]],
+                unsubscribe_token: str | None = None):
     """Build and send a digest email to a specific user."""
     total = sum(len(posts) for posts in results.values())
     subject = f"Resale Signal: {total} new listing{'s' if total != 1 else ''} — {datetime.now().strftime('%b %d')}"
-    html = build_digest_html(results)
-    send_email(recipient, subject, html)
+
+    base = _site_url()
+    dashboard_url = f"{base}/dashboard"
+    unsub_url = f"{base}/unsubscribe?token={unsubscribe_token}" if unsubscribe_token else None
+
+    html = build_digest_html(results, dashboard_url=dashboard_url, unsubscribe_url=unsub_url)
+    send_email(recipient, subject, html, unsubscribe_url=unsub_url)
 
 
 def send_test_email(recipient: str):
     """Send a test email to verify SMTP config is working."""
-    html = build_digest_html({"Test Alert": [
-        {"title": "This is a test listing", "price": "$100", "url": "#", "neighborhood": "Downtown"},
-    ]})
+    base = _site_url()
+    html = build_digest_html(
+        {"Test Alert": [
+            {"title": "This is a test listing", "price": "$100", "url": "#", "neighborhood": "Downtown"},
+        ]},
+        dashboard_url=f"{base}/dashboard",
+    )
     send_email(recipient, "Resale Signal — Test Email", html)

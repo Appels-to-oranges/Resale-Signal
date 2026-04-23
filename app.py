@@ -13,7 +13,7 @@ from db import (
     add_notification, get_notifications_for_user, get_setting, set_setting,
     create_user, get_user_by_email, get_user_by_id, generate_magic_token,
     verify_magic_token, get_users_with_alerts, get_digest_results_for_user,
-    update_user_digest_sent,
+    update_user_digest_sent, get_user_by_unsubscribe_token, deactivate_user_alerts,
 )
 
 logging.basicConfig(
@@ -204,6 +204,19 @@ def toggle_alert_route(alert_id):
     return redirect(url_for("dashboard"))
 
 
+# --------------- Unsubscribe ---------------
+
+@app.route("/unsubscribe")
+def unsubscribe():
+    token = request.args.get("token", "")
+    user = get_user_by_unsubscribe_token(token)
+    if not user:
+        flash("Invalid unsubscribe link.", "error")
+        return redirect(url_for("landing"))
+    deactivate_user_alerts(user["id"])
+    return render_template("unsubscribed.html", email=user["email"])
+
+
 # --------------- Digest endpoint (cron trigger) ---------------
 
 def _run_digest_job():
@@ -229,7 +242,8 @@ def _run_digest_job():
 
         log.info("  [%s] %d new post(s) across %d alert(s)", user["email"], total, len(results))
         try:
-            send_digest(user["email"], results)
+            send_digest(user["email"], results,
+                        unsubscribe_token=user.get("unsubscribe_token"))
             update_user_digest_sent(user["id"])
             log.info("  [%s] Digest sent.", user["email"])
         except Exception as e:
