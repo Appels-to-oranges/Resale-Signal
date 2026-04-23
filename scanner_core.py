@@ -27,8 +27,13 @@ def check_single_alert(alert: dict) -> list[dict]:
         log.error("Failed to scrape [%s]: %s", alert["name"], e)
         return []
 
+    query_words = alert["query"].lower().split()
+
     new_posts = []
     for post in listings:
+        title_lower = post.title.lower()
+        if not all(word in title_lower for word in query_words):
+            continue
         if is_new_post(post.post_id):
             save_post(post.post_id, post.title, post.price, post.url,
                       alert["id"], post.neighborhood)
