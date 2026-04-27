@@ -24,6 +24,8 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 log.info("Starting Resale Signal app module...")
 
+MAX_ALERTS_PER_USER = 5
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "resale-signal-secret-key-change-me")
 
@@ -133,7 +135,8 @@ def dashboard():
 
     return render_template("dashboard.html",
                            alerts=alerts,
-                           notifications=notifications)
+                           notifications=notifications,
+                           max_alerts=MAX_ALERTS_PER_USER)
 
 
 # --------------- Alert CRUD ---------------
@@ -141,6 +144,10 @@ def dashboard():
 @app.route("/alerts/new")
 @login_required
 def new_alert():
+    uid = session["user_id"]
+    if len(get_alerts_for_user(uid)) >= MAX_ALERTS_PER_USER:
+        flash(f"You've reached the maximum of {MAX_ALERTS_PER_USER} alerts. Edit or delete an existing alert first.", "error")
+        return redirect(url_for("dashboard"))
     return render_template("alert_form.html", alert=None)
 
 
@@ -148,6 +155,11 @@ def new_alert():
 @login_required
 def create_alert():
     uid = session["user_id"]
+
+    if len(get_alerts_for_user(uid)) >= MAX_ALERTS_PER_USER:
+        flash(f"You've reached the maximum of {MAX_ALERTS_PER_USER} alerts. Edit or delete an existing alert first.", "error")
+        return redirect(url_for("dashboard"))
+
     name = request.form.get("name", "").strip()
     region = request.form.get("region", "").strip().lower()
     category = request.form.get("category", "sss").strip().lower()
@@ -183,6 +195,50 @@ def alert_detail(alert_id):
 
     posts = get_posts_for_alert(alert_id, limit=200)
     return render_template("alert_detail.html", alert=alert, posts=posts)
+
+
+@app.route("/alerts/<int:alert_id>/edit")
+@login_required
+def edit_alert(alert_id):
+    uid = session["user_id"]
+    alert = get_alert(alert_id, user_id=uid)
+    if not alert:
+        flash("Alert not found.", "error")
+        return redirect(url_for("dashboard"))
+    return render_template("alert_form.html", alert=alert)
+
+
+@app.route("/alerts/<int:alert_id>/edit", methods=["POST"])
+@login_required
+def update_alert_route(alert_id):
+    uid = session["user_id"]
+    alert = get_alert(alert_id, user_id=uid)
+    if not alert:
+        flash("Alert not found.", "error")
+        return redirect(url_for("dashboard"))
+
+    name = request.form.get("name", "").strip()
+    region = request.form.get("region", "").strip().lower()
+    category = request.form.get("category", "sss").strip().lower()
+    query = request.form.get("query", "").strip()
+    min_price = request.form.get("min_price", "").strip()
+    max_price = request.form.get("max_price", "").strip()
+
+    if not name or not region or not query:
+        flash("Name, region, and search query are required.", "error")
+        return redirect(url_for("edit_alert", alert_id=alert_id))
+
+    update_alert(
+        alert_id,
+        name=name,
+        region=region,
+        category=category,
+        query=query,
+        min_price=int(min_price) if min_price else None,
+        max_price=int(max_price) if max_price else None,
+    )
+    flash(f"Alert \"{name}\" updated.", "success")
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/alerts/<int:alert_id>/delete", methods=["POST"])
